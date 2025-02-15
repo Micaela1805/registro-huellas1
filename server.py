@@ -92,5 +92,15 @@ def verificar_huella():
         print("Huella no reconocida")
         return jsonify({"status": "error", "message": "Huella no encontrada"}), 404
 
+# 🔹 Nuevo endpoint para probar googleapiclient
+@app.route("/test-googleapi")
+def test_google_api():
+    try:
+        from googleapiclient.discovery import build
+        return jsonify({"status": "success", "message": "Google API client importado correctamente"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+
