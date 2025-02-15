@@ -3,18 +3,22 @@ from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import usb.core
 import usb.util
+import os
+import json
 import time
 
 app = Flask(__name__)
 
-# 🔹 Configuración de Google Sheets
+# 🔹 Configuración de Google Sheets desde variables de entorno
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
-SERVICE_ACCOUNT_FILE = "credenciales.json"
-SHEET_ID = "1Gnh6cUqXK76pQGoq6tS9ZVJXPiN7eYzI8kca_HA"  # ⚠️ Reemplázalo con tu ID real
+SHEET_ID = os.getenv("GOOGLE_SHEET_ID", "1Gnh6cUqXK76pQGoq6tS9ZVJXPiN7eYzI8kca_HA")  # Reemplázalo si es necesario
 
-credentials = service_account.Credentials.from_service_account_file(
-    SERVICE_ACCOUNT_FILE, scopes=SCOPES
-)
+credenciales_json = os.getenv("GOOGLE_CREDENTIALS")
+if not credenciales_json:
+    raise ValueError("⚠️ No se encontraron las credenciales en las variables de entorno.")
+
+credentials_info = json.loads(credenciales_json)
+credentials = service_account.Credentials.from_service_account_info(credentials_info, scopes=SCOPES)
 service = build("sheets", "v4", credentials=credentials)
 sheet = service.spreadsheets()
 
@@ -22,32 +26,29 @@ sheet = service.spreadsheets()
 VENDOR_ID = 0x1b55
 PRODUCT_ID = 0x0120
 
-# Buscar el lector de huellas
 dev = usb.core.find(idVendor=VENDOR_ID, idProduct=PRODUCT_ID)
-
 if dev is None:
-    raise ValueError("Lector de huellas ZKTeco Live20R no encontrado")
+    raise ValueError("⚠️ Lector de huellas ZKTeco Live20R no encontrado.")
 
 try:
     dev.set_configuration()
-    print("Lector de huellas conectado correctamente.")
+    print("✅ Lector de huellas conectado correctamente.")
 except usb.core.USBError as e:
-    print(f"Error al configurar el lector: {e}")
+    print(f"❌ Error al configurar el lector: {e}")
 
 # 🔹 Función para capturar huella
 def capturar_huella():
-    print("Esperando huella...")
+    print("🔹 Esperando huella...")
 
     try:
-        # Leer los datos de la huella
         data = dev.read(0x82, 512, timeout=5000)  # Ajusta el tamaño si es necesario
-        huella_hash = "".join(format(x, "02x") for x in data[:16])  # Solo los primeros 16 bytes
+        huella_hash = "".join(format(x, "02x") for x in data[:16])  # Tomamos solo los primeros 16 bytes
 
-        print(f"Huella capturada: {huella_hash}")
+        print(f"✅ Huella capturada: {huella_hash}")
         return huella_hash
 
     except usb.core.USBError as e:
-        print(f"Error al leer la huella: {e}")
+        print(f"❌ Error al leer la huella: {e}")
         return None
 
 # 🔹 Función para obtener los hashes registrados en Google Sheets
@@ -61,7 +62,7 @@ def obtener_hashes_registrados():
         return huellas_db
 
     except Exception as e:
-        print(f"Error al obtener hashes de Google Sheets: {e}")
+        print(f"❌ Error al obtener hashes de Google Sheets: {e}")
         return {}
 
 @app.route("/verificar", methods=["GET"])
@@ -76,7 +77,7 @@ def verificar_huella():
     # 🔹 Verificar si la huella capturada existe en Google Sheets
     if huella_capturada in huellas_registradas:
         dni = huellas_registradas[huella_capturada]
-        print(f"Huella reconocida. DNI: {dni}")
+        print(f"✅ Huella reconocida. DNI: {dni}")
 
         # 🔹 Registrar la asistencia en Google Sheets
         row = [[dni, time.strftime("%d/%m/%Y"), time.strftime("%H:%M:%S"), "Almuerzo"]]
@@ -89,7 +90,7 @@ def verificar_huella():
 
         return jsonify({"status": "success", "dni": dni, "message": "Huella validada"}), 200
     else:
-        print("Huella no reconocida")
+        print("❌ Huella no reconocida")
         return jsonify({"status": "error", "message": "Huella no encontrada"}), 404
 
 # 🔹 Nuevo endpoint para probar googleapiclient
@@ -103,4 +104,5 @@ def test_google_api():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=1000, debug=True)
+
 
